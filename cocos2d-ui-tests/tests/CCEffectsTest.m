@@ -12,6 +12,7 @@
 #if CC_EFFECTS_EXPERIMENTAL
     CCEffectDistanceField* _distanceFieldEffect;
     CCEffectDFOutline* _outlineEffect;
+    CCEffectDFInnerGlow* _innerGlowEffect;
 #endif
 }
 
@@ -28,6 +29,56 @@
 #pragma mark Distance Fields
 
 #if CC_EFFECTS_EXPERIMENTAL
+
+-(void)setupDFInnerGlowTest
+{
+    self.subTitle = @"Distance Field Inner Glow Test";
+    
+    CCSprite *environment = [CCSprite spriteWithImageNamed:@"Images/MountainPanorama.jpg"];
+    environment.positionType = CCPositionTypeNormalized;
+    environment.anchorPoint = ccp(0.5, 0.5);
+    environment.position = ccp(0.5f, 0.5f);
+    
+    CCTexture* texture = [[CCTextureCache sharedTextureCache] addImage:@"Images/output.png"];
+    
+    CCColor* fillColor = [CCColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.0];
+    _innerGlowEffect = [CCEffectDFInnerGlow effectWithOutlineColor:[CCColor redColor] fillColor:fillColor outlineWidth:3 fieldScale:32 distanceField:texture];
+    
+    CCSprite *dfSprite = [CCSprite spriteWithImageNamed:@"Images/df_sprite.png"];
+    dfSprite.position = ccp(0.5, 0.5);
+    dfSprite.positionType = CCPositionTypeNormalized;
+    dfSprite.effect = _innerGlowEffect;
+    dfSprite.scale = 1.0f;
+    
+    CCSpriteFrame* background = [CCSpriteFrame frameWithImageNamed:@"Tests/slider-background.png"];
+    CCSpriteFrame* backgroundHilite = [CCSpriteFrame frameWithImageNamed:@"Tests/slider-background-hilite.png"];
+    CCSpriteFrame* handle = [CCSpriteFrame frameWithImageNamed:@"Tests/slider-handle.png"];
+    
+    CCSlider* slider = [[CCSlider alloc] initWithBackground:background andHandleImage:handle];
+    [slider setBackgroundSpriteFrame:backgroundHilite forState:CCControlStateHighlighted];
+    slider.positionType = CCPositionTypeNormalized;
+    slider.position = ccp(0.1f, 0.5f);
+    
+    slider.preferredSizeType = CCSizeTypeMake(CCSizeUnitNormalized, CCSizeUnitUIPoints);
+    slider.preferredSize = CGSizeMake(0.5f, 10);
+    slider.rotation = 90;
+    slider.anchorPoint = ccp(0.5f, 0.5f);
+    slider.scale = 0.8;
+    
+    [slider setTarget:self selector:@selector(innerGlowWidthChanged:)];
+    
+    [self.contentNode addChild:environment];
+    [self.contentNode addChild:slider];
+    [self.contentNode addChild:dfSprite];
+}
+
+- (void)innerGlowWidthChanged:(id)sender
+{
+    const int innerGloWMax = 6;
+    CCSlider* slider = sender;
+    _innerGlowEffect.outlineWidth = slider.sliderValue * innerGloWMax;
+}
+
 
 -(void)setupDFOutlineEffectTest
 {
