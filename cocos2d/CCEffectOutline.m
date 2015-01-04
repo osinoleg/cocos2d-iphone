@@ -16,30 +16,32 @@
 
 -(id)init
 {
-    return [self initWithOutlineColor:[CCColor redColor] outlineWidth:2];
+    return [self initWithOutlineColor:[CCColor redColor] outlineWidth:2 outlinePosition:kCCEffectOutlineInside];
 }
 
--(id)initWithOutlineColor:(CCColor*)outlineColor outlineWidth:(int)outlineWidth
+-(id)initWithOutlineColor:(CCColor*)outlineColor outlineWidth:(int)outlineWidth outlinePosition:(CCEffectOutlinePosition)outlinePosition
 {
     NSArray *uniforms = @[
                           [CCEffectUniform uniform:@"vec4" name:@"u_outlineColor" value:[NSValue valueWithGLKVector4:outlineColor.glkVector4]],
                           [CCEffectUniform uniform:@"vec2" name:@"u_stepSize" value:[NSValue valueWithGLKVector2:GLKVector2Make(0.01, 0.01)]],
-                          [CCEffectUniform uniform:@"float" name:@"u_currentPass" value:[NSNumber numberWithFloat:0.0]]
+                          [CCEffectUniform uniform:@"float" name:@"u_currentPass" value:[NSNumber numberWithFloat:0.0]],
+                          [CCEffectUniform uniform:@"float" name:@"u_outlinePosition" value:[NSNumber numberWithFloat:outlinePosition]]
                           ];
     
     if((self = [super initWithFragmentUniforms:uniforms vertexUniforms:nil varyings:nil]))
     {
         self.outlineWidth = outlineWidth;
         _outlineColor = outlineColor;
+        _outlinePosition = outlinePosition;
         
         self.debugName = @"CCEffectOutline";
     }
     return self;
 }
 
-+(id)effectWithOutlineColor:(CCColor*)outlineColor outlineWidth:(int)outlineWidth
++(id)effectWithOutlineColor:(CCColor*)outlineColor outlineWidth:(int)outlineWidth outlinePosition:(CCEffectOutlinePosition)outlinePosition
 {
-    return [[self alloc] initWithOutlineColor:outlineColor outlineWidth:outlineWidth];
+    return [[self alloc] initWithOutlineColor:outlineColor outlineWidth:outlineWidth outlinePosition:outlinePosition];
 }
 
 -(void)buildFragmentFunctions
@@ -47,14 +49,6 @@
     self.fragmentFunctions = [[NSMutableArray alloc] init];
     
     NSString* effectBody = CC_GLSL(
-                                   
-                                   if(u_currentPass == 1.0)
-                                   {
-                                       vec4 prev = texture2D(cc_PreviousPassTexture, cc_FragTexCoord2);
-                                       vec4 orig = texture2D(cc_MainTexture, cc_FragTexCoord1);
-                                       vec4 col = mix(orig, prev, prev.a);
-                                       return col;
-                                   }
                                    
                                    // Use Laplacian matrix / filter to find the edges
                                    // Apply this kernel to each pixel
@@ -64,20 +58,34 @@
                                     0 -1  0
                                     */
                                    
-                                   float alpha = 4.0 * texture2D(cc_MainTexture, cc_FragTexCoord1).a;
-                                   alpha -= texture2D(cc_MainTexture, cc_FragTexCoord1 + vec2(u_stepSize.x, 0.0)).a;
-                                   alpha -= texture2D(cc_MainTexture, cc_FragTexCoord1 + vec2(-u_stepSize.x, 0.0)).a;
-                                   alpha -= texture2D(cc_MainTexture, cc_FragTexCoord1 + vec2(0.0, u_stepSize.y)).a;
-                                   alpha -= texture2D(cc_MainTexture, cc_FragTexCoord1 + vec2(0.0, -u_stepSize.y)).a;
+                                   // 5.2hrs of work so far
                                    
-                                   // do everthing in 1 pass
-                                   vec4 col = texture2D(cc_MainTexture, cc_FragTexCoord1);
-                                   col = mix(col, u_outlineColor, alpha);
+                                   vec2 uv = cc_FragTexCoord1;
+                                   vec4 color = texture2D(cc_MainTexture, cc_FragTexCoord1);
                                    
-                                   // extract the outline (used for multi pass)
-                                   //vec4 col = vec4(texture2D(cc_MainTexture, cc_FragTexCoord1).a / 1.0, 0.0, 0.0, alpha);
+                                   float alpha = 4.0 * color.a;
+                                   alpha -= texture2D(cc_MainTexture, uv + vec2(u_stepSize.x, 0.0)).a;
+                                   alpha -= texture2D(cc_MainTexture, uv + vec2(-u_stepSize.x, 0.0)).a;
+                                   alpha -= texture2D(cc_MainTexture, uv + vec2(0.0, u_stepSize.y)).a;
+                                   alpha -= texture2D(cc_MainTexture, uv + vec2(0.0, -u_stepSize.y)).a;
                                    
-                                   return col;
+                                   // outside / center
+                                   if(alpha < 0.0 && (u_outlinePosition == 2.0 || u_outlinePosition == 0.0))
+                                   {
+                                       alpha *= -1.0;
+                                   }
+                                   
+                                   // outside
+                                   if(color.a <= 0.0 && u_outlinePosition == 2.0)
+                                   {
+                                       color = mix(color, u_outlineColor, alpha);
+                                   }
+                                   else if(u_outlinePosition == 1.0 || u_outlinePosition == 0.0) // inside / center
+                                   {
+                                       color = mix(color, u_outlineColor, alpha);
+                                   }
+                                                                      
+                                   return color;
                                    
                                    );
     
@@ -91,10 +99,7 @@
     self.vertexFunctions = [[NSMutableArray alloc] init];
     
     NSString* effectBody = CC_GLSL(
-                                   
-                                   
                                    return cc_Position;
-                                   
                                    );
     
     CCEffectFunction* vertexFunction = [[CCEffectFunction alloc] initWithName:@"outlineEffect"
@@ -115,52 +120,21 @@
         passInputs.shaderUniforms[CCShaderUniformMainTexture] = passInputs.previousPassTexture;
         passInputs.shaderUniforms[CCShaderUniformPreviousPassTexture] = passInputs.previousPassTexture;
         passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_outlineColor"]] = [NSValue valueWithGLKVector4:weakSelf.outlineColor.glkVector4];
+
+        float outlineWidth = (float)_outlineWidth;
+        if(_outlinePosition == kCCEffectOutlineCenter)
+        {
+            outlineWidth *= 0.5f;
+        }
         
-        GLKVector2 stepSize = GLKVector2Make(_outlineWidth / passInputs.previousPassTexture.contentSize.width,
-                                             _outlineWidth / passInputs.previousPassTexture.contentSize.height);
+        GLKVector2 stepSize = GLKVector2Make(outlineWidth / passInputs.previousPassTexture.contentSize.width,
+                                             outlineWidth / passInputs.previousPassTexture.contentSize.height);
         
         passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_stepSize"]] = [NSValue valueWithGLKVector2:stepSize];
         passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_currentPass"]] = [NSNumber numberWithFloat:0.0f];
+        passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_outlinePosition"]] = [NSNumber numberWithFloat:_outlinePosition];
         
     } copy]];
-    
-    
-    // Pass 1 is a WIP (trying to scale the outline before applying it. (a bad idea so far..)
-#if 0
-    CCEffectRenderPass *pass1 = [[CCEffectRenderPass alloc] init];
-    pass1.debugLabel = @"CCEffectOutline pass 1";
-    pass1.shader = self.shader;
-    pass1.blendMode = [CCBlendMode premultipliedAlphaMode];
-    pass1.beginBlocks = @[[^(CCEffectRenderPass *pass, CCEffectRenderPassInputs *passInputs) {
-        
-        passInputs.shaderUniforms[CCShaderUniformPreviousPassTexture] = passInputs.previousPassTexture;
-        passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_outlineColor"]] = [NSValue valueWithGLKVector4:weakSelf.outlineColor.glkVector4];
-
-        GLKVector2 stepSize = GLKVector2Make(_outlineWidth / passInputs.previousPassTexture.contentSize.width,
-                                             _outlineWidth / passInputs.previousPassTexture.contentSize.height);
-        
-        passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_stepSize"]] = [NSValue valueWithGLKVector2:stepSize];
-        passInputs.shaderUniforms[weakSelf.uniformTranslationTable[@"u_currentPass"]] = [NSNumber numberWithFloat:1.0f];
-        
-        
-        float aspect = passInputs.previousPassTexture.contentSize.width / passInputs.previousPassTexture.contentSize.height;
-        float w = _outlineWidth * (4.0 * aspect); // no idea why I need to do this..
-        float w2 = w / 2;
-        CGRect rect = CGRectMake(w2, w2 * aspect,
-                                 passInputs.previousPassTexture.contentSize.width-(w),
-                                 passInputs.previousPassTexture.contentSize.height-(w*aspect));
-        
-        CCSpriteTexCoordSet texCoords = [CCSprite textureCoordsForTexture:passInputs.previousPassTexture
-                                                                 withRect:rect rotated:NO xFlipped:NO yFlipped:NO];
-        CCSpriteVertexes verts = pass.verts;
-        verts.bl.texCoord2 = texCoords.bl;
-        verts.br.texCoord2 = texCoords.br;
-        verts.tr.texCoord2 = texCoords.tr;
-        verts.tl.texCoord2 = texCoords.tl;
-        pass.verts = verts;
-
-    } copy]];
-#endif
     
     self.renderPasses = @[pass0];
 }

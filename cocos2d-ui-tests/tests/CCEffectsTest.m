@@ -40,17 +40,34 @@
     environment.position = ccp(0.5f, 0.5f);
     
     CCColor* outlineColor = [CCColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0];
-    CCEffectOutline* outline = [CCEffectOutline effectWithOutlineColor:outlineColor outlineWidth:2];
+    CCEffectOutline* outlineInside = [CCEffectOutline effectWithOutlineColor:outlineColor
+                                                          outlineWidth:1 outlinePosition:kCCEffectOutlineInside];
     
-    // df_sprite.png grossini.png
+    CCEffectOutline* outlineOutside = [CCEffectOutline effectWithOutlineColor:outlineColor
+                                                                outlineWidth:1 outlinePosition:kCCEffectOutlineOutside];
+
+    CCEffectOutline* outlineCenter = [CCEffectOutline effectWithOutlineColor:outlineColor
+                                                                outlineWidth:1 outlinePosition:kCCEffectOutlineCenter];
+    
     CCSprite *dfSprite = [CCSprite spriteWithImageNamed:@"Images/grossini.png"];
-    dfSprite.position = ccp(0.5, 0.5);
+    dfSprite.position = ccp(0.3, 0.5);
     dfSprite.positionType = CCPositionTypeNormalized;
-    dfSprite.effect = outline;
-    dfSprite.scale = 1.0f;
+    dfSprite.effect = outlineInside;
+    
+    CCSprite *dfSprite2 = [CCSprite spriteWithImageNamed:@"Images/grossini.png"];
+    dfSprite2.position = ccp(0.7, 0.5);
+    dfSprite2.positionType = CCPositionTypeNormalized;
+    dfSprite2.effect = outlineOutside;
+    
+    CCSprite *dfSprite3 = [CCSprite spriteWithImageNamed:@"Images/grossini.png"];
+    dfSprite3.position = ccp(0.51, 0.5);
+    dfSprite3.positionType = CCPositionTypeNormalized;
+    dfSprite3.effect = outlineCenter;
 
     [self.contentNode addChild:environment];
     [self.contentNode addChild:dfSprite];
+    [self.contentNode addChild:dfSprite2];
+    [self.contentNode addChild:dfSprite3];
 }
 
 #pragma mark Distance Fields
